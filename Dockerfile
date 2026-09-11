@@ -17,14 +17,20 @@ RUN adduser \
     --uid "${UID}" \
     appuser
 
-RUN --mount=type=cache,target=/root/.cache/pip \
-    --mount=type=bind,source=requirements.txt,target=requirements.txt \
-    python -m pip install -r requirements.txt
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
+RUN --mount=type=cache,target=/root/.cache/uv \
+    --mount=type=bind,source=uv.lock,target=uv.lock \
+    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
+    uv sync --frozen --no-install-project \
+    && chown -R appuser:appuser /app/.venv
+
+ENV UV_CACHE_DIR=/tmp/.uv-cache
 
 USER appuser
 
-COPY . .
+COPY --chown=appuser:appuser . .
 
 EXPOSE 8000
 
-CMD uv run fastapi dev
+CMD ["uv", "run", "fastapi", "dev", "--host", "0.0.0.0"]
