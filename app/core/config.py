@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     CORS_ORIGINS: list[str] = ["*"]
 
     LOG_LEVEL: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
+    ENVIRONMENT: Literal["development", "testing", "production"] = "development"
 
     POSTGRES_HOST: str = "localhost"
     POSTGRES_PORT: int = 5432
@@ -27,11 +28,15 @@ class Settings(BaseSettings):
     POSTGRES_PASSWORD: str
 
     @property
+    def get_db_name(self) -> str:
+        return f"{self.POSTGRES_DB}_{self.ENVIRONMENT}"
+
+    @property
     def database_url(self) -> str:
         """Async SQLAlchemy connection URL (asyncpg driver)."""
         return (
             f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}"
-            f"@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+            f"@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.get_db_name}"
         )
 
     @property
@@ -39,7 +44,7 @@ class Settings(BaseSettings):
         """Sync connection URL used by Alembic migrations (psycopg2 driver)."""
         return (
             f"postgresql+psycopg2://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}"
-            f"@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+            f"@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.get_db_name}"
         )
 
 
