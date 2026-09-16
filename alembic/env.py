@@ -17,8 +17,9 @@ if alembic_config.config_file_name is not None:
 # Pull database URL and metadata from the application
 # ---------------------------------------------------------------------------
 
-from app.core.config import settings  # noqa: E402
-from app.core.db import Base  # noqa: E402 – imports all models via Base
+from app.core.config import settings  
+from app.core.db.base import Base 
+import app.core.db.models
 
 # Override the URL in alembic.ini with the value from settings
 alembic_config.set_main_option("sqlalchemy.url", settings.sync_database_url)
