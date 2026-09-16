@@ -13,7 +13,16 @@ class Settings(BaseSettings):
 
     APP_NAME: str = "Mneme API"
     APP_VERSION: str = "1.0.0"
-    DEBUG: bool = False
+    DEBUG: bool = True
+
+    jwt_secret: str
+    jwt_algorithm: str = "HS256"
+    otp_expire_minutes: int = 10
+    jwt_expire_minutes: int = 15
+    refresh_token_expire_days: int = 30
+
+    RESEND_API_KEY: str | None = None
+    EMAIL_FROM: str = "Mneme <onboarding@resend.dev>"
 
     CORS_ORIGINS: list[str] = ["*"]
 

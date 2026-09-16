@@ -2,13 +2,8 @@ from collections.abc import AsyncGenerator
 
 from pgvector.sqlalchemy import Vector  # noqa: F401 – re-exported for model use
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.orm import DeclarativeBase
 
 from app.core.config import settings
-
-# ---------------------------------------------------------------------------
-# Engine
-# ---------------------------------------------------------------------------
 
 engine = create_async_engine(
     settings.database_url,
@@ -18,31 +13,12 @@ engine = create_async_engine(
     max_overflow=20,
 )
 
-# ---------------------------------------------------------------------------
-# Session factory
-# ---------------------------------------------------------------------------
-
 AsyncSessionLocal = async_sessionmaker(
     bind=engine,
     expire_on_commit=False,
     autoflush=False,
     autocommit=False,
 )
-
-# ---------------------------------------------------------------------------
-# Declarative base
-# ---------------------------------------------------------------------------
-
-
-class Base(DeclarativeBase):
-    """Base class for all SQLAlchemy ORM models."""
-
-    pass
-
-
-# ---------------------------------------------------------------------------
-# FastAPI dependency
-# ---------------------------------------------------------------------------
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:

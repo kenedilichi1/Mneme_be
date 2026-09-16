@@ -6,9 +6,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from slowapi.middleware import SlowAPIMiddleware
 from sqlalchemy import text
 
+import app.core.db.models  # noqa: F401 ensures all models are registered before mapper configuration
 from app.api.v1.router import api_router
 from app.core.config import settings
-from app.core.db import engine
+from app.core.db.db import engine
 from app.core.logging import setup_logging
 from app.core.rate_limit import setup_rate_limiting
 

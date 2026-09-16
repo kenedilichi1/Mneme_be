@@ -1,0 +1,75 @@
+erDiagram
+    USERS ||--o{ OTP_CODES : "requests"
+    USERS ||--o{ OAUTH_ACCOUNTS : "links (optional, 0 or more)"
+    USERS ||--o{ DOCUMENTS : "owns"
+    USERS ||--o{ CONVERSATIONS : "owns"
+    DOCUMENTS ||--o{ DOCUMENT_CHUNKS : "chunked into"
+    DOCUMENTS |o--o{ CONVERSATIONS : "scoped to (nullable)"
+    CONVERSATIONS ||--o{ MESSAGES : "contains"
+
+    USERS {
+        uuid id PK
+        text email UK
+        timestamptz created_at
+    }
+
+    OTP_CODES {
+        uuid id PK
+        uuid user_id FK
+        text code_hash
+        timestamptz expires_at
+        int attempts
+        timestamptz created_at
+    }
+
+    OAUTH_ACCOUNTS {
+        uuid id PK
+        uuid user_id FK "ON DELETE CASCADE"
+        text provider "e.g. google, apple"
+        text provider_user_id "provider's sub claim"
+        timestamptz created_at
+    }
+
+    DOCUMENTS {
+        uuid id PK
+        uuid user_id FK
+        text title
+        text author "nullable"
+        text original_filename
+        bigint file_size
+        int page_count "nullable"
+        text storage_key
+        text file_type
+        text status
+        text[] tags
+        timestamptz created_at
+    }
+
+    DOCUMENT_CHUNKS {
+        uuid id PK
+        uuid document_id FK
+        uuid user_id FK
+        int chunk_index
+        int page_number "nullable"
+        text section_title "nullable"
+        text content
+        int token_count
+        text embedding_model
+        vector embedding
+    }
+
+    CONVERSATIONS {
+        uuid id PK
+        uuid user_id FK
+        uuid document_id FK "nullable — null means library-level"
+        timestamptz created_at
+    }
+
+    MESSAGES {
+        uuid id PK
+        uuid conversation_id FK
+        text role
+        text content
+        jsonb citations
+        timestamptz created_at
+    }
