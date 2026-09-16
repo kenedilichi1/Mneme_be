@@ -36,6 +36,10 @@ class Settings(BaseSettings):
     POSTGRES_USER: str
     POSTGRES_PASSWORD: str
 
+    B2_KEY_ID: str
+    B2_APPLICATION_KEY: str
+    B2_BUCKET_NAME: str
+
     @property
     def get_db_name(self) -> str:
         return f"{self.POSTGRES_DB}_{self.ENVIRONMENT}"

@@ -7,6 +7,9 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db.base_class import BaseModel
 from app.utils.timezone import utcnow
+from app.modules.documents.models.document_model import Document
+from app.modules.auth.models.otp_code_model import OtpCode
+from app.modules.auth.models.oauth_account_model import OauthAccount
 
 
 
@@ -23,5 +26,8 @@ class User(BaseModel):
         back_populates="user", cascade="all, delete-orphan"
     )
     oauth_accounts: Mapped[list["OauthAccount"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+    documents: Mapped[list["Document"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )

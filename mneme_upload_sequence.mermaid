@@ -1,0 +1,30 @@
+sequenceDiagram
+    participant Client as Mobile App
+    participant API as Document Service
+    participant DB as Postgres
+    participant Storage as B2 (Object Storage)
+    participant Queue as Processing Queue
+    participant Worker as Pipeline Worker
+
+    Client->>API: POST /documents (metadata only)
+    API->>DB: INSERT documents (status = pending_upload)
+    DB-->>API: document_id
+    API->>Storage: request presigned PUT URL
+    Storage-->>API: presigned URL
+    API-->>Client: document_id + presigned URL
+
+    Client->>Storage: PUT file bytes directly
+    Storage-->>Client: 200 OK
+
+    Client->>API: PATCH /documents/{id}/confirm
+    API->>DB: UPDATE status = uploaded
+    API->>Queue: publish "document uploaded" event
+    API-->>Client: 200 OK
+
+    Queue->>Worker: consume event
+    Worker->>Storage: fetch raw file
+    Worker->>Worker: parse, chunk, embed, tag
+    Worker->>DB: INSERT document_chunks
+    Worker->>DB: UPDATE status = ready
+
+    Note over Client,DB: Client can poll GET /documents/{id}<br/>to see status move from processing to ready
