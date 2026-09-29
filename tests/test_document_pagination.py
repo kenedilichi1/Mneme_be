@@ -37,7 +37,7 @@ async def _login(client: AsyncClient, db_session: AsyncSession) -> str:
         "/api/v1/auth/verify-otp", json={"email": EMAIL, "otp": "654321"}
     )
     assert res.status_code == 200, res.text
-    return res.json()["access_token"]
+    return res.json()["data"]["access_token"]
 
 
 async def _plant_documents(
@@ -70,7 +70,7 @@ async def _list(client: AsyncClient, token: str, **params):
         headers={"Authorization": f"Bearer {token}"},
     )
     assert res.status_code == 200, res.text
-    return [d["title"] for d in res.json()]
+    return [d["title"] for d in res.json()["data"]]
 
 
 @pytest.mark.asyncio

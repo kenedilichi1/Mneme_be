@@ -38,7 +38,7 @@ async def _login(client: AsyncClient, db_session: AsyncSession) -> dict[str, str
         f"{AUTH}/verify-otp", json={"email": EMAIL, "otp": "654321"}
     )
     assert res.status_code == 200, res.text
-    return res.json()
+    return res.json()["data"]
 
 
 async def _refresh(client: AsyncClient, refresh_token: str):
@@ -82,7 +82,7 @@ async def test_refresh_rotates_and_rejects_reuse(
 
     res = await _refresh(client, t1)
     assert res.status_code == 200, res.text
-    second = res.json()
+    second = res.json()["data"]
     # The JWT is deterministic per second for the same user — the refresh
     # token is what must differ
     assert second["refresh_token"] != t1

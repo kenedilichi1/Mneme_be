@@ -9,6 +9,7 @@ from app.core.rate_limit import (
     enforce_rate_limit,
     rate_limit,
 )
+from app.core.responses import COMMON_ERRORS, SuccessEnvelope, error_responses, ok
 from app.modules.auth.dependencies.auth_dependency import AuthServiceDep, CurrentUserDep
 from app.modules.auth.schemas.auth_schema import (
     RefreshRequest,
@@ -23,7 +24,12 @@ auth_router = APIRouter()
 _RATE_WINDOW_SECONDS = 60
 
 
-@auth_router.post("/request-otp", status_code=202)
+@auth_router.post(
+    "/request-otp",
+    status_code=202,
+    response_model=SuccessEnvelope[dict[str, str]],
+    responses=COMMON_ERRORS,
+)
 async def request_otp(
     body: RequestOtp,
     auth_service: AuthServiceDep,
@@ -38,10 +44,19 @@ async def request_otp(
         security_session,
     )
     await auth_service.request_otp(body.email)
-    return {"message": "OTP sent"}
+    return ok(None, "OTP sent")
 
 
-@auth_router.post("/verify-otp", response_model=TokenResponse)
+@auth_router.post(
+    "/verify-otp",
+    response_model=SuccessEnvelope[TokenResponse],
+    responses=COMMON_ERRORS
+    | error_responses(
+        (400, "Invalid, expired or missing OTP"),
+        (404, "User not found"),
+        (429, "Rate limit or OTP lockout exceeded"),
+    ),
+)
 async def verify_otp(
     body: VerifyOtpRequest,
     auth_service: AuthServiceDep,
@@ -54,23 +69,39 @@ async def verify_otp(
         _RATE_WINDOW_SECONDS,
         security_session,
     )
-    return await auth_service.verify_otp(body.email, body.otp, security_session)
+    tokens = await auth_service.verify_otp(body.email, body.otp, security_session)
+    return ok(tokens, "Login successful")
 
 
-@auth_router.post("/refresh", response_model=TokenResponse)
+@auth_router.post(
+    "/refresh",
+    response_model=SuccessEnvelope[TokenResponse],
+    responses=COMMON_ERRORS
+    | error_responses((401, "Invalid, expired, revoked or reused refresh token")),
+)
 async def refresh(
     body: RefreshRequest,
     auth_service: AuthServiceDep,
     security_session: SecuritySessionDep,
 ):
-    return await auth_service.refresh_session(body.refresh_token, security_session)
+    tokens = await auth_service.refresh_session(body.refresh_token, security_session)
+    return ok(tokens, "Token refreshed")
 
 
-@auth_router.post("/logout")
+@auth_router.post(
+    "/logout",
+    response_model=SuccessEnvelope[dict[str, str]],
+    responses=COMMON_ERRORS,
+)
 async def logout(body: RefreshRequest, auth_service: AuthServiceDep):
-    return await auth_service.logout(body.refresh_token)
+    await auth_service.logout(body.refresh_token)
+    return ok(None, "Logged out")
 
 
-@auth_router.get("/me", response_model=UserPublic)
+@auth_router.get(
+    "/me",
+    response_model=SuccessEnvelope[UserPublic],
+    responses=COMMON_ERRORS | error_responses((401, "Not authenticated")),
+)
 async def me(current_user: CurrentUserDep):
-    return current_user
+    return ok(current_user, "Profile retrieved")

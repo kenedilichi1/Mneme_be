@@ -108,6 +108,25 @@ modules/<name>/
 - **Logging** — structured logging configured once at import in
   `app/core/logging.py`.
 
+## Response envelope
+
+Every JSON response carries the same wrapper, so clients can handle success
+and failure uniformly:
+
+```json
+{"success": true,  "message": "Upload confirmed", "data": { ... }}
+{"success": false, "error": {"code": 404, "message": "Document not found", "details": null}}
+```
+
+- Success: route handlers return `ok(data, message)` with
+  `response_model=SuccessEnvelope[T]` (`app/core/responses.py`).
+- Errors: registered exception handlers in `app/main.py` convert everything —
+  raised `HTTPException`s, request validation (422, with field-level
+  `details`), and unhandled exceptions (500, generic message) — into the
+  `error` shape. Status codes and headers are unchanged.
+- The single exception: `204 No Content` (document delete) stays bodyless,
+  as HTTP requires.
+
 ## API surface (v1)
 
 All routes are mounted under `/api/v1`; interactive docs at `/docs`.

@@ -85,7 +85,7 @@ async def _login(client: AsyncClient, db_session: AsyncSession) -> str:
         "/api/v1/auth/verify-otp", json={"email": EMAIL, "otp": "654321"}
     )
     assert res.status_code == 200, res.text
-    return res.json()["access_token"]
+    return res.json()["data"]["access_token"]
 
 
 @pytest.mark.asyncio
@@ -107,8 +107,8 @@ async def test_upload_confirm_worker_search_pipeline(
         headers=headers,
     )
     assert res.status_code == 201, res.text
-    document_id = res.json()["document"]["id"]
-    assert res.json()["upload_url"]
+    document_id = res.json()["data"]["document"]["id"]
+    assert res.json()["data"]["upload_url"]
 
     # 2. Confirm: storage reports the real size and the event is captured
     #    instead of hitting the broker
@@ -126,7 +126,7 @@ async def test_upload_confirm_worker_search_pipeline(
             f"/api/v1/documents/{document_id}/confirm", headers=headers
         )
     assert res.status_code == 200, res.text
-    assert res.json()["status"] == "uploaded"
+    assert res.json()["data"]["status"] == "uploaded"
     assert len(captured_events) == 1
 
     event = DocumentEvent(
@@ -152,7 +152,7 @@ async def test_upload_confirm_worker_search_pipeline(
 
     res = await client.get(f"/api/v1/documents/{document_id}", headers=headers)
     assert res.status_code == 200
-    assert res.json()["status"] == "processed"
+    assert res.json()["data"]["status"] == "processed"
 
     # 4. Search: every mode finds the processed content
     app.dependency_overrides[get_embedding_service] = FakeEmbeddingService
@@ -164,7 +164,7 @@ async def test_upload_confirm_worker_search_pipeline(
                 headers=headers,
             )
             assert res.status_code == 200, res.text
-            results = res.json()
+            results = res.json()["data"]
             assert results, f"mode {mode!r} returned no results"
             assert any(EXPECTED_TEXT in r["content"] for r in results), (
                 f"mode {mode!r} did not find the document content"
