@@ -7,6 +7,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from app.api.dependencies import SessionDep
 from app.core.email import EmailService
 from app.modules.auth.repositories.otp_code_repository import OtpCodeRepository
+from app.modules.auth.repositories.refresh_token_repository import RefreshTokenRepository
 from app.modules.auth.services.auth_service import AuthService
 from app.modules.auth.services.secrets import decode_access_token
 from app.modules.user.dependencies import UserServiceDep
@@ -20,6 +21,10 @@ def get_otp_code_repository(db: SessionDep) -> OtpCodeRepository:
     return OtpCodeRepository(db)
 
 
+def get_refresh_token_repository(db: SessionDep) -> RefreshTokenRepository:
+    return RefreshTokenRepository(db)
+
+
 def get_email_service() -> EmailService:
     return EmailService()
 
@@ -28,8 +33,9 @@ def get_auth_service(
     otp_code_repo: Annotated[OtpCodeRepository, Depends(get_otp_code_repository)],
     user_service: UserServiceDep,
     email_service: Annotated[EmailService, Depends(get_email_service)],
+    refresh_token_repo: Annotated[RefreshTokenRepository, Depends(get_refresh_token_repository)],
 ) -> AuthService:
-    return AuthService(otp_code_repo, user_service, email_service)
+    return AuthService(otp_code_repo, user_service, email_service, refresh_token_repo)
 
 
 OtpCodeRepositoryDep = Annotated[OtpCodeRepository, Depends(get_otp_code_repository)]

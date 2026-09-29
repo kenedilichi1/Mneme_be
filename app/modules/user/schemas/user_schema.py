@@ -3,9 +3,10 @@ from uuid import UUID
 from pydantic import BaseModel, EmailStr, Field
 
 class CreateUser(BaseModel):
-    email:EmailStr = Field(
-        max_length=50,
+    email: EmailStr = Field(
+        max_length=255,
     )
+
     first_name:str|None = Field(
         default= None,
         min_length=1,

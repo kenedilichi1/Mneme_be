@@ -1,10 +1,8 @@
 from pydantic import BaseModel, EmailStr, Field
 
-class SignupRequest(BaseModel):
+class RequestOtp(BaseModel):
     email: EmailStr=Field(..., description="The email of the user")
 
-class LoginRequest(BaseModel):
-    email: EmailStr=Field(..., description="The email of the user")
 
 class VerifyOtpRequest(BaseModel):
     email: EmailStr=Field(..., description="The email of the user")
@@ -12,5 +10,10 @@ class VerifyOtpRequest(BaseModel):
 
 class TokenResponse(BaseModel):
     access_token: str
+    refresh_token: str
     token_type: str = "bearer"
+
+
+class RefreshRequest(BaseModel):
+    refresh_token: str = Field(..., description="The refresh token to rotate or revoke")
 
