@@ -25,11 +25,15 @@ class DocumentRepository:
         )
         return result.scalar_one_or_none()
 
-    async def get_all_by_user(self, user_id: uuid.UUID) -> list[Document]:
+    async def get_all_by_user(
+        self, user_id: uuid.UUID, limit: int = 20, offset: int = 0
+    ) -> list[Document]:
         result = await self.db.execute(
             select(Document)
             .where(Document.user_id == user_id)
-            .order_by(Document.created_at.desc())
+            .order_by(Document.created_at.desc(), Document.id.desc())
+            .limit(limit)
+            .offset(offset)
         )
         return list(result.scalars().all())
 
@@ -37,6 +41,13 @@ class DocumentRepository:
         await self.db.flush()
         await self.db.refresh(document)
         return document
+
+    async def commit(self) -> None:
+        """Explicit mid-request commit — sanctioned exception to get_db owning
+        the commit; see the transaction policy in app/core/db/db.py (MNE-23).
+        Only DocumentService may call this (confirm_upload ×2, delete_document),
+        each with its own justification at the call site."""
+        await self.db.commit()
 
     async def delete(self, document: Document) -> None:
         await self.db.delete(document)

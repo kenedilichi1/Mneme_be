@@ -11,7 +11,7 @@ from alembic import context
 alembic_config = context.config
 
 if alembic_config.config_file_name is not None:
-    fileConfig(alembic_config.config_file_name)
+    fileConfig(alembic_config.config_file_name, disable_existing_loggers=False)
 
 # ---------------------------------------------------------------------------
 # Pull database URL and metadata from the application
@@ -21,8 +21,15 @@ from app.core.config import settings
 from app.core.db.base import Base 
 import app.core.db.models
 
-# Override the URL in alembic.ini with the value from settings
-alembic_config.set_main_option("sqlalchemy.url", settings.sync_database_url)
+# Override the URL in alembic.ini with the value from settings.
+# Tests inject their own URL through `config.attributes` to run migrations
+# against a throwaway container.
+_override_url = alembic_config.attributes.get("sqlalchemy_url_override")
+if _override_url:
+    # ConfigParser interpolation: literal % must be doubled
+    alembic_config.set_main_option("sqlalchemy.url", _override_url.replace("%", "%%"))
+else:
+    alembic_config.set_main_option("sqlalchemy.url", settings.sync_database_url)
 
 # Required for autogenerate to detect model changes
 target_metadata = Base.metadata

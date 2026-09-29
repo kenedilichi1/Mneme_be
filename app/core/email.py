@@ -9,6 +9,16 @@ logger = logging.getLogger(__name__)
 OTP_EMAIL_SUBJECT = "Mneme OTP"
 
 
+def normalize_email(email: str) -> str:
+    """Canonical form of an address: identity, rate-limit and lockout keys.
+
+    Every write and every lookup must go through this so `Foo@x.com` and
+    `foo@x.com` can never become two users (enforced by the unique index on
+    lower(email) — see the email-normalization migration).
+    """
+    return email.strip().lower()
+
+
 class EmailService:
     def __init__(self) -> None:
         if settings.RESEND_API_KEY:
@@ -24,8 +34,8 @@ class EmailService:
             logger.warning("RESEND_API_KEY unset; skipping email to %s", to)
             return
 
-        if settings.DEBUG:
-            logger.info("DEBUG mode: skipping actual email sending to %s", to)
+        if settings.DEBUG and not settings.is_production:
+            logger.info("DEBUG mode: skipping actual email sending to %s. Content: %s", to, text)
             return
 
         try:
@@ -45,9 +55,11 @@ class EmailService:
                     e,
                 )
             else:
-                logger.error("ResendError sending email to %s: %s", to, e)
+                logger.error("ResendError sending email to %s", to)
+                logger.exception("ResendError")
         except Exception as e:
-            logger.error("Failed to send email to %s: %s", to, e)
+            logger.error("Failed to send email to %s", to)
+            logger.exception("Failed to send email")
 
     async def send_email(
         self,
@@ -58,8 +70,12 @@ class EmailService:
         await asyncio.to_thread(self._send_email, to, subject, text)
 
     async def send_otp_email(self, to: str, otp_code: str) -> None:
+        # Never log codes in production, even if the settings check were bypassed
+        if settings.DEBUG and not settings.is_production:
+            logger.info("[DEV/DEBUG OTP] Recipient: %s | OTP Code: %s", to, otp_code)
         await self.send_email(
             to,
             OTP_EMAIL_SUBJECT,
             f"Your OTP code is {otp_code}",
         )
+

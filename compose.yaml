@@ -2,18 +2,45 @@ services:
   server:
     build:
       context: .
+    # Local development only: the image itself runs `fastapi run` (no reload).
+    command: ["/app/.venv/bin/fastapi", "dev", "--host", "0.0.0.0", "app/main.py"]
     ports:
       - 8000:8000
     environment:
       - POSTGRES_HOST=db
     env_file:
       - .env
+    volumes:
+      - hf-cache:/app/.cache/huggingface
     depends_on:
       db:
         condition: service_healthy
     develop:
       watch:
         - action: sync
+          path: ./app
+          target: /app/app
+        - action: rebuild
+          path: ./pyproject.toml
+        - action: rebuild
+          path: ./uv.lock
+  worker:
+    build:
+      context: .
+    command: ["/app/.venv/bin/python", "-m", "app.worker.main"]
+    environment:
+      - POSTGRES_HOST=db
+    env_file:
+      - .env
+    volumes:
+      - hf-cache:/app/.cache/huggingface
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    develop:
+      watch:
+        - action: sync+restart
           path: ./app
           target: /app/app
         - action: rebuild
@@ -36,3 +63,4 @@ services:
       retries: 5
 volumes:
   db-data:
+  hf-cache:

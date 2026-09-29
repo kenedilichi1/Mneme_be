@@ -38,7 +38,7 @@ def setup_logging() -> None:
                 "uvicorn.access": {"level": log_level, "propagate": True},
                 "uvicorn.error": {"level": log_level, "propagate": True},
                 "sqlalchemy.engine": {
-                    "level": "DEBUG" if settings.DEBUG else "WARNING",
+                    "level": "INFO" if settings.SQL_ECHO else "WARNING",
                     "propagate": True,
                 },
             },
