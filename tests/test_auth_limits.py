@@ -176,7 +176,7 @@ async def test_request_otp_limited_per_ip(client: AsyncClient):
         "/api/v1/auth/request-otp", json={"email": unique_email("ip-over")}
     )
     assert response.status_code == 429
-    assert response.json()["detail"] == "Rate limit exceeded"
+    assert response.json()["error"]["message"] == "Rate limit exceeded"
     assert "retry-after" in response.headers
 
 
@@ -233,7 +233,7 @@ async def test_verify_otp_limited_per_email_across_ips(
         client, email, "000000", headers={"X-Forwarded-For": "203.0.113.250"}
     )
     assert response.status_code == 429
-    assert response.json()["detail"] == "Rate limit exceeded"
+    assert response.json()["error"]["message"] == "Rate limit exceeded"
 
 
 # ---------------------------------------------------------------------------

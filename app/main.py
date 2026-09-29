@@ -1,9 +1,11 @@
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 import app.core.db.models  # noqa: F401 ensures all models are registered before mapper configuration
 from app.api.v1.router import api_router
@@ -11,6 +13,7 @@ from app.core.config import settings
 from app.core.db.db import engine
 from app.core.logging import setup_logging
 from app.core.rate_limit import rate_limit
+from app.core.responses import error_json, http_exception_response, ok
 
 from app.core.queue.queue import rabbitmq
 
@@ -60,16 +63,38 @@ app.include_router(
 )
 
 
+# ── Uniform error envelope ───────────────────────────────────────────────────
+# Every error (raised HTTPException, validation failure, unexpected crash)
+# leaves the API in the same shape: {"success": false, "error": {...}}.
+# Success responses are enveloped by each handler via ok()/SuccessEnvelope.
+
+
+@app.exception_handler(StarletteHTTPException)
+async def _http_exception_handler(request: Request, exc: StarletteHTTPException):
+    return http_exception_response(exc)
+
+
+@app.exception_handler(RequestValidationError)
+async def _validation_exception_handler(
+    request: Request, exc: RequestValidationError
+):
+    return error_json(422, "Request validation failed", exc.errors())
+
+
+@app.exception_handler(Exception)
+async def _unhandled_exception_handler(request: Request, exc: Exception):
+    logger.exception("Unhandled exception while processing %s", request.url.path)
+    return error_json(500, "Internal server error")
+
 
 @app.get("/")
 def read_root():
-    return {"message": f"Welcome to the {settings.APP_NAME}"}
-
+    return ok({"app": settings.APP_NAME}, "Welcome")
 
 
 @app.get("/health")
 def read_health():
-    return {"status": "ok"}
+    return ok({"status": "ok"}, "OK")
 
 
 if __name__ == "__main__":

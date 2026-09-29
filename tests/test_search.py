@@ -68,7 +68,7 @@ async def _login(client: AsyncClient, db_session: AsyncSession, email: str):
         "/api/v1/auth/verify-otp", json={"email": email, "otp": "654321"}
     )
     assert res.status_code == 200, res.text
-    return res.json()["access_token"], user
+    return res.json()["data"]["access_token"], user
 
 
 async def _plant_document(
@@ -126,7 +126,7 @@ async def test_text_mode_returns_matching_chunk(
 
     res = await _search(client, token, query="apple revenue", mode="text")
     assert res.status_code == 200, res.text
-    results = res.json()
+    results = res.json()["data"]
     assert len(results) == 1
     assert results[0]["document_id"] == str(doc.id)
     assert results[0]["content"] == "apple revenue growth analysis"
@@ -151,7 +151,7 @@ async def test_vector_mode_returns_nearest_chunk(
 
     res = await _search(client, token, query="apple", mode="vector")
     assert res.status_code == 200, res.text
-    results = res.json()
+    results = res.json()["data"]
     # The nearest chunk ranks first; farther chunks may follow below it
     assert results[0]["document_id"] == str(doc.id)
     assert results[0]["content"] == "apple pie recipe"
@@ -177,7 +177,7 @@ async def test_hybrid_mode_fuses_vector_and_text(
 
     res = await _search(client, token, query="apple revenue", mode="hybrid")
     assert res.status_code == 200, res.text
-    results = res.json()
+    results = res.json()["data"]
     # Fused result: the chunk matching in both vector and text ranks first
     assert results[0]["document_id"] == str(doc.id)
     assert results[0]["content"] == "apple revenue growth analysis"
@@ -198,10 +198,10 @@ async def test_document_id_narrows_results_to_one_document(
 
     res = await _search(client, token, query="apple", mode="vector", document_id=doc1.id)
     assert res.status_code == 200, res.text
-    assert [r["document_id"] for r in res.json()] == [str(doc1.id)]
+    assert [r["document_id"] for r in res.json()["data"]] == [str(doc1.id)]
 
     res = await _search(client, token, query="apple", mode="vector", document_id=doc2.id)
-    assert [r["document_id"] for r in res.json()] == [str(doc2.id)]
+    assert [r["document_id"] for r in res.json()["data"]] == [str(doc2.id)]
 
 
 @pytest.mark.asyncio
@@ -222,7 +222,7 @@ async def test_limit_caps_result_count(
 
     res = await _search(client, token, query="zebra stripes", mode="text", limit=2)
     assert res.status_code == 200, res.text
-    assert len(res.json()) == 2
+    assert len(res.json()["data"]) == 2
 
 
 @pytest.mark.asyncio
@@ -242,7 +242,7 @@ async def test_cross_user_isolation(
 
     res = await _search(client, token_a, query="apple revenue", mode=mode, limit=10)
     assert res.status_code == 200, res.text
-    results = res.json()
+    results = res.json()["data"]
     assert results, "expected results for the querying user"
     doc_ids = {r["document_id"] for r in results}
     assert doc_ids == {str(doc_a.id)}
@@ -250,7 +250,7 @@ async def test_cross_user_isolation(
 
     # Bob searching his own content still finds it (symmetry check)
     res = await _search(client, token_b, query="apple revenue", mode=mode, limit=10)
-    assert {r["document_id"] for r in res.json()} == {str(doc_b.id)}
+    assert {r["document_id"] for r in res.json()["data"]} == {str(doc_b.id)}
 
 
 @pytest.mark.asyncio
@@ -270,7 +270,7 @@ async def test_document_id_from_other_user_returns_no_results(
         client, token_a, query="apple", mode="vector", document_id=doc_b.id
     )
     assert res.status_code == 200, res.text
-    assert res.json() == []
+    assert res.json()["data"] == []
 
 
 @pytest.mark.asyncio
