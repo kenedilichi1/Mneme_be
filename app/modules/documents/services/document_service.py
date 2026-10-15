@@ -18,6 +18,7 @@ from app.modules.documents.repositories.document_repository import DocumentRepos
 from app.modules.documents.schemas.document_schema import (
     MIME_TO_EXTENSION,
     DocumentCreate,
+    DocumentPublic,
 )
 
 logger = logging.getLogger(__name__)
@@ -71,6 +72,16 @@ class DocumentService:
                 detail="Document not found",
             )
         return document
+
+    async def to_public(self, document: Document) -> DocumentPublic:
+        """ORM row → API shape, with a presigned download URL attached."""
+        public = DocumentPublic.model_validate(document)
+        if document.storage_key:
+            # Local SigV4 signing; run in a thread like the upload-URL path
+            public.url = await asyncio.to_thread(
+                self.storage_service.get_download_url, document.storage_key
+            )
+        return public
 
     async def list_documents(
         self, user_id: uuid.UUID, limit: int = 20, offset: int = 0

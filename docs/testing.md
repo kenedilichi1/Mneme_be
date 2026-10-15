@@ -60,7 +60,7 @@ Key points:
 | secrets unit tests (OTP HMAC, JWT, refresh hashing) | `test_auth.py` |
 | repositories + pgvector round-trip | `test_database_integration.py` |
 | full OTP HTTP flow, rate limits, lockout | `test_auth_endpoints_integration.py`, `test_auth_limits.py` |
-| refresh rotation / reuse detection / logout | `test_refresh_tokens.py` |
+| refresh rotation / reuse detection / logout / cookie delivery | `test_refresh_tokens.py` |
 | documents: confirm, delete ordering, pagination, status transitions | `test_document_service.py`, `test_document_status.py`, `test_document_pagination.py`, `test_document_worker.py` |
 | search: modes, isolation, validation, indexes (EXPLAIN), fake embeddings | `test_search.py`, `test_search_indexes.py`, `test_vector_search_service.py` |
 | chunker (Nomic tokenizer), parser | `test_docling_parser.py` |

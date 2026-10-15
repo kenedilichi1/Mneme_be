@@ -31,9 +31,29 @@ class Settings(BaseSettings):
     otp_expire_minutes: int = 10
     jwt_expire_minutes: int = 15
     refresh_token_expire_days: int = 30
+    # Refresh token delivery for browser clients: an httpOnly cookie scoped to
+    # /api/v1/auth, so the token is unreachable from JS (XSS containment).
+    # Native clients opt into body delivery per request (docs/authentication.md).
+    refresh_cookie_name: str = "mneme_refresh"
+    # "none" requires HTTPS (Secure is then always set); use it only when the
+    # web app and API sit on different registrable domains.
+    refresh_cookie_samesite: Literal["lax", "strict", "none"] = "lax"
 
     RESEND_API_KEY: str
     EMAIL_FROM: str = "Mneme <onboarding@resend.dev>"
+
+    # --- LLM (Google Gemini) ---
+    # Required to chat; empty in development disables nothing at import time but
+    # chat requests fail fast. Always set in production (enforced below).
+    GEMINI_API_KEY: str = ""
+    GEMINI_MODEL: str = "gemini-3.5-flash"
+    GEMINI_MAX_OUTPUT_TOKENS: int = 2048
+    # Token budget for retrieved context passed to the model
+    CHAT_CONTEXT_TOKEN_BUDGET: int = 4000
+    # Most recent messages replayed as history
+    CHAT_HISTORY_MAX_MESSAGES: int = 12
+    # Chunks fetched per query before truncation to the context budget
+    CHAT_RETRIEVAL_LIMIT: int = 8
 
     EMBEDDING_MODEL: str = "nomic-ai/nomic-embed-text-v1.5"
     # Pin the model to an exact HuggingFace commit so embeddings are
@@ -126,6 +146,8 @@ class Settings(BaseSettings):
             )
         if not self.RESEND_API_KEY:
             problems.append("RESEND_API_KEY must be set, or OTP emails are never sent")
+        if not self.GEMINI_API_KEY:
+            problems.append("GEMINI_API_KEY must be set, or document Q&A cannot work")
 
         if problems:
             raise ValueError(

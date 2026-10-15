@@ -20,7 +20,8 @@ client                          API
   │  POST /api/v1/auth/verify-otp     { "email": "...", "otp": "123456" }
   │──────────────────────────────────▶│  verify HMAC + expiry + lockout
   │                                   │  delete used code
-  │◀── 200 { access_token, refresh_token, token_type }
+  │◀── 200 { access_token, token_type, refresh_token: null }
+  │    + Set-Cookie: mneme_refresh=<refresh> (HttpOnly, SameSite=Lax, Path=/api/v1/auth)
 ```
 
 - The OTP is 6 digits, valid `otp_expire_minutes` (default 10), stored only as
@@ -36,18 +37,38 @@ client                          API
 |---|---|---|
 | Type | JWT (HS256) | opaque random string |
 | Lifetime | `jwt_expire_minutes` (15) | `refresh_token_expire_days` (30) |
+| Delivery | `Authorization` header | browser: httpOnly cookie; native: response body (opt-in) |
 | Storage | client memory only | hashed (SHA-256) in `refresh_tokens` table |
 | Secret | `jwt_secret` | generated per token, hash stored server-side |
 
-- `POST /auth/refresh` — **rotation**: the presented token is atomically
-  claimed (`UPDATE … WHERE revoked_at IS NULL`), a new refresh token + new
-  access token are issued.
+### Refresh-token delivery: cookie vs body
+
+- **Browser (default)** — `verify-otp` sets the refresh token as an
+  **httpOnly cookie** (`mneme_refresh`, `Path=/api/v1/auth`,
+  `SameSite=Lax`, `Secure` in production) and returns `refresh_token: null`
+  in the body. JavaScript cannot read it; XSS cannot mint a new session once
+  the 15-min access token expires. `refresh` and `logout` read the cookie
+  automatically — no body needed.
+- **Native clients** — send `"deliver_refresh_token": true` to `verify-otp`;
+  the refresh token then appears in the body, and `refresh`/`logout` take it
+  in the JSON body instead of the cookie.
+- Cookie attributes are configurable: `refresh_cookie_name`,
+  `refresh_cookie_samesite` (`lax`/`strict`/`none`; `none` implies `Secure`
+  and requires HTTPS — use only when the web app is on another registrable
+  domain).
+
+- `POST /auth/refresh` — **rotation**: the presented token (cookie or body)
+  is atomically claimed (`UPDATE … WHERE revoked_at IS NULL`), a new refresh
+  token + new access token are issued. The cookie is re-set with the rotated
+  value; `refresh_token` stays `null` in the body for cookie-mode clients.
+  No token anywhere → 401 `Missing refresh token`.
 - **Reuse detection**: presenting an already-rotated token means it was
   stolen. The *entire family* of live tokens for that user is revoked
   immediately and the request fails with 401. The revocation runs on the
   security session so it commits even on the 401 path.
 - `POST /auth/logout` — idempotent: revokes every live refresh token for the
-  user. Safe to call twice.
+  user (token from cookie or body) and always clears the cookie. Safe to
+  call twice, and with no session at all.
 
 ## Brute-force protection
 
@@ -89,6 +110,6 @@ rejected outright.
 |---|---|---|
 | `POST /api/v1/auth/request-otp` | none | 5/min per IP + global |
 | `POST /api/v1/auth/verify-otp` | none | 10/min per IP + global |
-| `POST /api/v1/auth/refresh` | refresh token in body | global |
-| `POST /api/v1/auth/logout` | refresh token in body | global |
+| `POST /api/v1/auth/refresh` | refresh token: cookie **or** optional body | global |
+| `POST /api/v1/auth/logout` | refresh token: cookie **or** optional body | global |
 | `GET /api/v1/auth/me` | `Authorization: Bearer <access>` | global |

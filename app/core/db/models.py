@@ -5,6 +5,8 @@ from app.modules.auth.models.refresh_token_model import RefreshToken
 from app.modules.user.models.user_model import User
 from app.modules.documents.models.document_model import Document
 from app.modules.documents.models.document_chunk_model import DocumentChunk
+from app.modules.chat.models.conversation_model import Conversation
+from app.modules.chat.models.message_model import Message
 
 __all__ = [
     "RateLimit",
@@ -14,4 +16,6 @@ __all__ = [
     "User",
     "Document",
     "DocumentChunk",
+    "Conversation",
+    "Message",
 ]

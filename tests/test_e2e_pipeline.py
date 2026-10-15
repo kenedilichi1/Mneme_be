@@ -109,6 +109,8 @@ async def test_upload_confirm_worker_search_pipeline(
     assert res.status_code == 201, res.text
     document_id = res.json()["data"]["document"]["id"]
     assert res.json()["data"]["upload_url"]
+    # The document carries a presigned download URL alongside the upload_url
+    assert res.json()["data"]["document"]["url"]
 
     # 2. Confirm: storage reports the real size and the event is captured
     #    instead of hitting the broker
@@ -153,6 +155,9 @@ async def test_upload_confirm_worker_search_pipeline(
     res = await client.get(f"/api/v1/documents/{document_id}", headers=headers)
     assert res.status_code == 200
     assert res.json()["data"]["status"] == "processed"
+    # Download URL points at the stored object (presigned GET, ~15 min TTL)
+    download_url = res.json()["data"]["url"]
+    assert download_url and "X-Amz-Signature=" in download_url
 
     # 4. Search: every mode finds the processed content
     app.dependency_overrides[get_embedding_service] = FakeEmbeddingService

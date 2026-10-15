@@ -35,6 +35,13 @@ class DocumentPublic(BaseModel):
     status: str
     tags: list[str] = []
     created_at: datetime
+    url: str | None = Field(
+        default=None,
+        description=(
+            "Presigned GET URL for the stored file (valid ~15 min). "
+            "404s until the file has been uploaded (status pending_upload)"
+        ),
+    )
 
     model_config = {"from_attributes": True}
 

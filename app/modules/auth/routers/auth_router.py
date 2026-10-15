@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 
 from app.core.config import settings
 from app.core.email import normalize_email
@@ -16,6 +16,10 @@ from app.modules.auth.schemas.auth_schema import (
     RequestOtp,
     TokenResponse,
     VerifyOtpRequest,
+)
+from app.modules.auth.services.refresh_cookie import (
+    clear_refresh_cookie,
+    set_refresh_cookie,
 )
 from app.modules.user.schemas.user_schema import UserPublic
 
@@ -59,6 +63,7 @@ async def request_otp(
 )
 async def verify_otp(
     body: VerifyOtpRequest,
+    response: Response,
     auth_service: AuthServiceDep,
     security_session: SecuritySessionDep,
     _ip_limit: Annotated[None, Depends(rate_limit("verify_otp", settings.OTP_VERIFY_LIMIT_PER_MINUTE))],
@@ -70,6 +75,11 @@ async def verify_otp(
         security_session,
     )
     tokens = await auth_service.verify_otp(body.email, body.otp, security_session)
+    # Always set the httpOnly cookie; the body copy exists only for native
+    # clients that asked for it (browser JS must never see this token).
+    set_refresh_cookie(response, tokens["refresh_token"])
+    if not body.deliver_refresh_token:
+        tokens["refresh_token"] = None
     return ok(tokens, "Login successful")
 
 
@@ -77,14 +87,32 @@ async def verify_otp(
     "/refresh",
     response_model=SuccessEnvelope[TokenResponse],
     responses=COMMON_ERRORS
-    | error_responses((401, "Invalid, expired, revoked or reused refresh token")),
+    | error_responses(
+        (401, "Missing, invalid, expired, revoked or reused refresh token")
+    ),
 )
 async def refresh(
-    body: RefreshRequest,
+    request: Request,
+    response: Response,
     auth_service: AuthServiceDep,
     security_session: SecuritySessionDep,
+    body: RefreshRequest = RefreshRequest(),
 ):
-    tokens = await auth_service.refresh_session(body.refresh_token, security_session)
+    # Browser: token comes from the httpOnly cookie (body omitted entirely).
+    # Native: token comes in the body and goes back in the body.
+    raw_token = body.refresh_token or request.cookies.get(
+        settings.refresh_cookie_name
+    )
+    if not raw_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing refresh token",
+        )
+    tokens = await auth_service.refresh_session(raw_token, security_session)
+    # Rotate the cookie even for body-mode clients that also hold one.
+    set_refresh_cookie(response, tokens["refresh_token"])
+    if body.refresh_token is None:
+        tokens["refresh_token"] = None
     return ok(tokens, "Token refreshed")
 
 
@@ -93,8 +121,19 @@ async def refresh(
     response_model=SuccessEnvelope[dict[str, str]],
     responses=COMMON_ERRORS,
 )
-async def logout(body: RefreshRequest, auth_service: AuthServiceDep):
-    await auth_service.logout(body.refresh_token)
+async def logout(
+    request: Request,
+    response: Response,
+    auth_service: AuthServiceDep,
+    body: RefreshRequest = RefreshRequest(),
+):
+    raw_token = body.refresh_token or request.cookies.get(
+        settings.refresh_cookie_name
+    )
+    # Idempotent: no/unknown token still succeeds (and clears the cookie).
+    if raw_token:
+        await auth_service.logout(raw_token)
+    clear_refresh_cookie(response)
     return ok(None, "Logged out")
 
 

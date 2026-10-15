@@ -49,8 +49,16 @@ Sanctioned exceptions (each called out at its call site):
      RabbitMQ — the worker skips-and-acks events whose row isn't visible.
    - *Delete*: commits the row removal **before** touching B2 — a rolled-back
      delete must never have removed the file behind a live row.
+3. **`ConversationRepository.commit()` in `ChatService`** — the document Q&A
+   endpoint streams its answer (SSE), so each turn is committed as it is
+   produced: the question before the first byte (a disconnect must not lose
+   it), then the answer + citations before the `done` event. A mid-stream
+   failure otherwise ends in an error frame the global handlers can no
+   longer convert, so waiting for `get_db` would risk losing the turn.
 
-Everything else commits via `get_db` after the response is generated.
+Everything else commits via `get_db` after the response is generated — for
+the chat endpoint that final commit is a no-op safety net; the turn was
+already durable.
 The worker is a separate process and owns its own transactions (per-job
 `AsyncSessionLocal`, committed at defined points).
 
