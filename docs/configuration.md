@@ -93,6 +93,13 @@ share them; no Redis.
 | `EMBEDDING_DIMENSION` | `768` | must match the model |
 | `MAX_CHUNK_TOKENS` | `512` | per-chunk budget in Nomic tokens |
 
+### Docling parsing
+
+| Variable | Default | Notes |
+|---|---|---|
+| `DOCLING_PAGE_BATCH_SIZE` | `20` | pages converted per pass. The peak-memory lever for large PDFs: one pass over a 768-page book OOM-killed the worker, and each kill is a redelivered message, i.e. a burned queue attempt |
+| `DOCLING_NUM_THREADS` | `2` | Docling inference threads. More threads means a higher memory peak for the same document |
+
 ### RabbitMQ
 
 | Variable | Default | Notes |

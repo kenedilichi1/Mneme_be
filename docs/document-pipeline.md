@@ -78,7 +78,11 @@ worker owns its own transactions):
    the message is acked, nothing is retried.
 3. Download the file from B2 to a temp file (the DB row is the source of
    truth, not the message body).
-4. Parse with Docling (`docling_parser`) — PDF and EPUB.
+4. Parse with Docling (`docling_parser`) — PDF and EPUB. PDFs are converted
+   in page batches (`DOCLING_PAGE_BATCH_SIZE`) so peak memory stays bounded
+   on large documents; provenance keeps global page numbers across batches.
+   OCR runs on RapidOCR's ONNX backend (bundled weights, `onnxruntime`), so
+   no model download happens at runtime.
 5. Chunk with the Nomic tokenizer under `MAX_CHUNK_TOKENS`
    ([search.md](search.md#chunking)).
 6. Embed all chunk texts in one batch, insert `document_chunks` rows

@@ -18,6 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db.db import AsyncSessionLocal
+import app.core.db.models  # noqa: F401  register mappers (Document -> User) for standalone runs
 from app.core.queue.events import (
     DOCUMENT_PROCESSING_QUEUE_NAME,
     DocumentEvent,

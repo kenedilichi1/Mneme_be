@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import model_validator
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _EXAMPLE_JWT_SECRETS = {"change-me", "changeme", "secret"}
@@ -43,6 +43,15 @@ class Settings(BaseSettings):
     EMBEDDING_DIMENSION: int = 768
     # Token budget per chunk, counted with the Nomic tokenizer (MNE-18)
     MAX_CHUNK_TOKENS: int = 512
+
+    # --- Docling PDF parsing ---
+    # Pages converted per pass. Each pass renders and assembles only its own
+    # pages, so this is the main peak-memory lever for large PDFs: one pass
+    # over a 768-page book OOM-killed the worker and burned a queue attempt.
+    DOCLING_PAGE_BATCH_SIZE: int = Field(default=20, ge=1)
+    # Inference threads for Docling's torch models. More threads means more
+    # concurrent activations, i.e. a higher peak on a memory-capped worker.
+    DOCLING_NUM_THREADS: int = Field(default=2, ge=1)
 
 
     # Only browsers enforce CORS; native mobile clients don't need an entry

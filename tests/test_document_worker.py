@@ -362,3 +362,63 @@ async def test_vanished_row_during_initial_mark_raises_deleted_error():
             await process_document(event)
 
     session.rollback.assert_awaited()
+
+
+async def test_set_status_leaves_processed_document_alone():
+    """A stale outcome for a document that already finished must not regress it."""
+    event = make_event()
+    doc = MagicMock(status="processed")
+    session = AsyncMock()
+    session.__aenter__.return_value = session
+    doc_repo = AsyncMock()
+    doc_repo.get_by_id.return_value = doc
+    with patch.object(document_worker, "AsyncSessionLocal", return_value=session), patch.object(
+        document_worker, "DocumentRepository", return_value=doc_repo
+    ):
+        await document_worker.set_document_status(event, "failed")
+        await document_worker.set_document_status(event, "uploaded")
+
+    assert doc.status == "processed"
+    doc_repo.update.assert_not_awaited()
+
+
+async def test_set_status_swallows_illegal_transition():
+    """An impossible outcome must not escape: the caller acks right after."""
+    event = make_event()
+    doc = MagicMock(status="pending_upload")
+    session = AsyncMock()
+    session.__aenter__.return_value = session
+    doc_repo = AsyncMock()
+    doc_repo.get_by_id.return_value = doc
+    with patch.object(document_worker, "AsyncSessionLocal", return_value=session), patch.object(
+        document_worker, "DocumentRepository", return_value=doc_repo
+    ):
+        await document_worker.set_document_status(event, "processed")
+
+    assert doc.status == "pending_upload"
+    doc_repo.update.assert_not_awaited()
+
+
+async def test_stale_message_for_finished_document_does_not_loop(broker):
+    """Regression: last-attempt outcome on an already-processed document used to
+    raise before the ack, so the message was requeued forever and a copy was
+    dead-lettered on every pass."""
+    event = make_event()
+    message = make_message(event, attempt=MAX_ATTEMPTS)
+    doc = MagicMock(status="processed")
+    session = AsyncMock()
+    session.__aenter__.return_value = session
+    doc_repo = AsyncMock()
+    doc_repo.get_by_id.return_value = doc
+
+    with patch.object(document_worker, "AsyncSessionLocal", return_value=session), patch.object(
+        document_worker, "DocumentRepository", return_value=doc_repo
+    ), patch.object(
+        document_worker, "process_document", AsyncMock(side_effect=ConnectionError("down"))
+    ):
+        await handle_message(message)
+
+    message.ack.assert_awaited_once()
+    assert doc.status == "processed"
+    dead = [rk for rk, _ in broker if rk.endswith(".dead")]
+    assert dead == [document_worker.dead_letter_queue_name(document_worker.QUEUE_NAME)]

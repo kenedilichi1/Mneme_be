@@ -5,8 +5,10 @@ from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict
 from docling.chunking import HybridChunker
+from docling.datamodel.accelerator_options import AcceleratorOptions
 from docling.datamodel.base_models import InputFormat
 from docling.datamodel.document import DoclingDocument
+from docling.datamodel.pipeline_options import PdfPipelineOptions
 from docling.document_converter import DocumentConverter, PdfFormatOption, EpubFormatOption
 
 from app.core.config import settings
@@ -61,6 +63,11 @@ class DoclingParserService:
     Chunks are bounded by ``max_chunk_tokens`` in Nomic (embedding-model)
     tokens, ``token_count`` is the exact tokenizer count of the chunk text,
     and ``chunk_index`` is gapless (0..n-1) over every emitted chunk.
+
+    PDFs are converted in page batches (``page_batch_size``) so peak memory
+    stays bounded: one pass over a multi-hundred-page PDF exhausts the
+    worker's memory and the process is OOM-killed, which the broker surfaces
+    as a redelivered message and burns a processing attempt.
     """
 
     MIME_TYPE_MAP: dict[str, InputFormat] = {
@@ -77,14 +84,32 @@ class DoclingParserService:
         self,
         max_chunk_tokens: Optional[int] = None,
         tokenizer=None,
+        page_batch_size: Optional[int] = None,
     ) -> None:
         self._converter = DocumentConverter(
-            allowed_formats=[InputFormat.PDF, InputFormat.EPUB]
+            allowed_formats=[InputFormat.PDF, InputFormat.EPUB],
+            format_options={
+                InputFormat.PDF: PdfFormatOption(
+                    pipeline_options=self._build_pdf_pipeline_options()
+                )
+            },
         )
         self._chunker = HybridChunker()
         self.max_chunk_tokens = max_chunk_tokens or settings.MAX_CHUNK_TOKENS
+        self.page_batch_size = page_batch_size or settings.DOCLING_PAGE_BATCH_SIZE
         # Injectable for tests; lazily loaded from the pinned model otherwise.
         self._tokenizer = tokenizer
+
+    @staticmethod
+    def _build_pdf_pipeline_options() -> PdfPipelineOptions:
+        options = PdfPipelineOptions()
+        # Every extra inference thread holds its own activations; on a
+        # memory-capped worker that is what tips a large PDF into the OOM
+        # killer. Two threads keep throughput acceptable within the budget.
+        options.accelerator_options = AcceleratorOptions(
+            num_threads=settings.DOCLING_NUM_THREADS
+        )
+        return options
 
     @property
     def tokenizer(self):
@@ -111,6 +136,48 @@ class DoclingParserService:
             f"Docling parsing layer currently supports PDF and EPUB files."
         )
 
+    def _convert_in_batches(
+        self, path: Path, input_format: InputFormat
+    ) -> List[DoclingDocument]:
+        """Convert a PDF ``page_batch_size`` pages at a time, in order.
+
+        A single pass over a multi-hundred-page PDF keeps every rendered page
+        and the growing document tree alive at once; on a memory-capped worker
+        the kernel OOM-kills it and the broker redelivers the job, which the
+        worker counts as a failed attempt. Each batch is a separate
+        ``convert`` call, so the previous batch's document is freed before the
+        next one starts.
+
+        ``page_range`` keeps *global* page numbers in the provenance of the
+        converted items, so chunk ``page_number`` stays correct across batches.
+        EPUB has no page concept and goes through a single pass.
+        """
+        if input_format != InputFormat.PDF:
+            return [self._converter.convert(path).document]
+
+        documents: List[DoclingDocument] = []
+        page_count: Optional[int] = None
+        start = 1
+        while page_count is None or start <= page_count:
+            end = start + self.page_batch_size - 1
+            result = self._converter.convert(path, page_range=(start, end))
+            page_count = result.input.page_count
+            if not result.document.pages:
+                break
+            logger.info(
+                "Converted pages %d-%d of %s (%d pages total)",
+                start,
+                min(end, page_count),
+                path.name,
+                page_count,
+            )
+            documents.append(result.document)
+            start = end + 1
+
+        if not documents:
+            raise ValueError(f"Docling produced no pages for document: {path.name}")
+        return documents
+
     def parse_document(
         self, file_path: Path | str, mime_type: Optional[str] = None
     ) -> ParsedDocument:
@@ -121,41 +188,41 @@ class DoclingParserService:
         input_format = self.resolve_input_format(path, mime_type)
         logger.info("Parsing %s document with Docling: %s", input_format.value, path)
 
-        conversion_result = self._converter.convert(path)
-        doc: DoclingDocument = conversion_result.document
+        documents = self._convert_in_batches(path, input_format)
 
-        text_content = doc.export_to_markdown()
+        text_content = "\n\n".join(
+            doc.export_to_markdown() for doc in documents
+        ).strip()
 
-        page_count = len(doc.pages) if doc.pages else None
+        page_count = sum(len(doc.pages) for doc in documents) or None
 
         title = None
         author = None
-        if hasattr(doc, "name") and doc.name:
-            title = doc.name
+        if hasattr(documents[0], "name") and documents[0].name:
+            title = documents[0].name
 
         chunks: List[ParsedChunk] = []
-        doc_chunks = list(self._chunker.chunk(doc))
+        for doc in documents:
+            for doc_chunk in self._chunker.chunk(doc):
+                content = doc_chunk.text.strip()
+                if not content:
+                    continue
 
-        for doc_chunk in doc_chunks:
-            content = doc_chunk.text.strip()
-            if not content:
-                continue
+                page_number = self._extract_page_number(doc_chunk)
+                section_title = self._extract_section_title(doc_chunk)
 
-            page_number = self._extract_page_number(doc_chunk)
-            section_title = self._extract_section_title(doc_chunk)
-
-            # Enforce the token budget and keep the index gapless: splitting
-            # or skipping must not leave holes in chunk_index.
-            for piece in self._split_to_token_budget(content):
-                chunks.append(
-                    ParsedChunk(
-                        chunk_index=len(chunks),
-                        content=piece,
-                        page_number=page_number,
-                        section_title=section_title,
-                        token_count=self._count_tokens(piece),
+                # Enforce the token budget and keep the index gapless: splitting
+                # or skipping must not leave holes in chunk_index.
+                for piece in self._split_to_token_budget(content):
+                    chunks.append(
+                        ParsedChunk(
+                            chunk_index=len(chunks),
+                            content=piece,
+                            page_number=page_number,
+                            section_title=section_title,
+                            token_count=self._count_tokens(piece),
+                        )
                     )
-                )
 
         inferred_mime_type = (
             mime_type
