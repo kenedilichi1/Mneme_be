@@ -31,6 +31,13 @@ class Settings(BaseSettings):
     otp_expire_minutes: int = 10
     jwt_expire_minutes: int = 15
     refresh_token_expire_days: int = 30
+    # Refresh token delivery for browser clients: an httpOnly cookie scoped to
+    # /api/v1/auth, so the token is unreachable from JS (XSS containment).
+    # Native clients opt into body delivery per request (docs/authentication.md).
+    refresh_cookie_name: str = "mneme_refresh"
+    # "none" requires HTTPS (Secure is then always set); use it only when the
+    # web app and API sit on different registrable domains.
+    refresh_cookie_samesite: Literal["lax", "strict", "none"] = "lax"
 
     RESEND_API_KEY: str
     EMAIL_FROM: str = "Mneme <onboarding@resend.dev>"

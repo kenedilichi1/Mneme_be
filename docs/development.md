@@ -57,7 +57,9 @@ Interactive API docs: **http://localhost:8000/docs**.
    - With `DEBUG=true` the code is printed in the **server logs** instead of
      being emailed.
 2. `POST /api/v1/auth/verify-otp` with `{"email": "...", "otp": "......"}`
-   → returns `access_token` + `refresh_token`.
+   → returns `access_token` (and `refresh_token: null` — the refresh token
+   went to the httpOnly cookie). To get it in the body instead, add
+   `"deliver_refresh_token": true` (native-client mode).
    Click **Authorize** (lock icon) and enter `Bearer <access_token>` — every
    protected route now sends it.
 3. `POST /api/v1/documents` → returns a document plus `upload_url`.
