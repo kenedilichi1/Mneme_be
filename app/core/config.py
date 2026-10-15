@@ -42,6 +42,19 @@ class Settings(BaseSettings):
     RESEND_API_KEY: str
     EMAIL_FROM: str = "Mneme <onboarding@resend.dev>"
 
+    # --- LLM (Google Gemini) ---
+    # Required to chat; empty in development disables nothing at import time but
+    # chat requests fail fast. Always set in production (enforced below).
+    GEMINI_API_KEY: str = ""
+    GEMINI_MODEL: str = "gemini-3.5-flash"
+    GEMINI_MAX_OUTPUT_TOKENS: int = 2048
+    # Token budget for retrieved context passed to the model
+    CHAT_CONTEXT_TOKEN_BUDGET: int = 4000
+    # Most recent messages replayed as history
+    CHAT_HISTORY_MAX_MESSAGES: int = 12
+    # Chunks fetched per query before truncation to the context budget
+    CHAT_RETRIEVAL_LIMIT: int = 8
+
     EMBEDDING_MODEL: str = "nomic-ai/nomic-embed-text-v1.5"
     # Pin the model to an exact HuggingFace commit so embeddings are
     # reproducible across deploys. Never float on a branch: bump this only
@@ -133,6 +146,8 @@ class Settings(BaseSettings):
             )
         if not self.RESEND_API_KEY:
             problems.append("RESEND_API_KEY must be set, or OTP emails are never sent")
+        if not self.GEMINI_API_KEY:
+            problems.append("GEMINI_API_KEY must be set, or document Q&A cannot work")
 
         if problems:
             raise ValueError(

@@ -51,6 +51,8 @@ Derived values (not set directly):
 | `otp_expire_minutes` | `10` | OTP lifetime |
 | `jwt_expire_minutes` | `15` | access-token lifetime |
 | `refresh_token_expire_days` | `30` | refresh-token lifetime |
+| `refresh_cookie_name` | `mneme_refresh` | browser refresh-token cookie name (httpOnly, `Path=/api/v1/auth`) |
+| `refresh_cookie_samesite` | `lax` | `lax` / `strict` / `none`. `none` requires HTTPS and always sets `Secure` — use only when the web app is on another registrable domain |
 
 ### Brute-force protection
 
@@ -100,6 +102,17 @@ share them; no Redis.
 | `DOCLING_PAGE_BATCH_SIZE` | `20` | pages converted per pass. The peak-memory lever for large PDFs: one pass over a 768-page book OOM-killed the worker, and each kill is a redelivered message, i.e. a burned queue attempt |
 | `DOCLING_NUM_THREADS` | `2` | Docling inference threads. More threads means a higher memory peak for the same document |
 
+### LLM (Google Gemini)
+
+| Variable | Default | Notes |
+|---|---|---|
+| `GEMINI_API_KEY` | `""` | from [aistudio.google.com/apikey](https://aistudio.google.com/apikey). Empty in development: the app boots, but document Q&A fails fast with an SSE `error` event. **Rejected in production** |
+| `GEMINI_MODEL` | `gemini-3.5-flash` | model id passed to the SDK |
+| `GEMINI_MAX_OUTPUT_TOKENS` | `2048` | cap on a single answer |
+| `CHAT_CONTEXT_TOKEN_BUDGET` | `4000` | token budget for retrieved chunks in the prompt |
+| `CHAT_HISTORY_MAX_MESSAGES` | `12` | most recent messages replayed as history |
+| `CHAT_RETRIEVAL_LIMIT` | `8` | chunks fetched per query before budget truncation |
+
 ### RabbitMQ
 
 | Variable | Default | Notes |
@@ -119,6 +132,7 @@ When `ENVIRONMENT=production`, a model validator runs at startup and raises
 - `otp_hash_key` ≥ 32 chars
 - `EMBEDDING_MODEL_REVISION` must be a pinned 40-char commit hash
 - `RESEND_API_KEY` must be set
+- `GEMINI_API_KEY` must be set
 
 Validation errors never echo setting values into logs
 (`hide_input_in_errors=True`), so secrets stay out of crash output.

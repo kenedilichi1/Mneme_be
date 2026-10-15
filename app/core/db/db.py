@@ -51,6 +51,10 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
        skips (and acks) messages whose document row is not committed yet;
        and delete_document must commit the row removal *before* removing
        the storage object (MNE-21).
+    3. ``ConversationRepository.commit`` in ``ChatService`` — the document
+       Q&A endpoint streams its answer, so each turn (question, then
+       answer + citations) is committed as it is produced; a client
+       disconnect or mid-stream failure must not lose history.
     """
     async with AsyncSessionLocal() as session:
         try:

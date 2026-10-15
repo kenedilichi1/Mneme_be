@@ -68,6 +68,7 @@ app/
     ├── user/               # user model, repository, profile
     ├── documents/          # upload, confirm, delete, chunker, parser, status
     ├── rag/                # search endpoint + vector search service
+    ├── chat/               # document Q&A: Gemini streaming + conversations
     └── library/            # placeholder endpoints (stubs)
 ```
 
@@ -91,11 +92,14 @@ modules/<name>/
 
 **Search** — see [search.md](search.md).
 
+**Document Q&A** — see [chat.md](chat.md).
+
 ## Cross-cutting concerns
 
 - **Transactions** — `get_db` owns commits; services flush only. Exceptions
   roll the whole request back. Documented exceptions live in
-  `app/core/db/db.py` (`get_security_session`, `DocumentRepository.commit`).
+  `app/core/db/db.py` (`get_security_session`, `DocumentRepository.commit`,
+  `ConversationRepository.commit` — the SSE chat turns).
   Full policy: [database.md](database.md#transaction-policy).
 - **Rate limiting** — Postgres-backed so API and any future processes share
   counters (`app/core/rate_limit.py`). Applied globally as a router
@@ -134,9 +138,9 @@ All routes are mounted under `/api/v1`; interactive docs at `/docs`.
 | Method & path | Purpose |
 |---|---|
 | `POST /auth/request-otp` | Start login: creates user if new, emails a code (202) |
-| `POST /auth/verify-otp` | Verify code → access + refresh tokens |
-| `POST /auth/refresh` | Rotate refresh token, new token pair |
-| `POST /auth/logout` | Revoke all refresh tokens for the user |
+| `POST /auth/verify-otp` | Verify code → access token; refresh token as httpOnly cookie (body only if `deliver_refresh_token`) |
+| `POST /auth/refresh` | Rotate refresh token (cookie or body), new access token + cookie |
+| `POST /auth/logout` | Revoke all refresh tokens for the user, clear cookie (idempotent) |
 | `GET /auth/me` | Current profile |
 | `POST /documents` | Create document + presigned upload URL (201) |
 | `GET /documents` | Paginated list (limit/offset, newest first) |
@@ -144,5 +148,8 @@ All routes are mounted under `/api/v1`; interactive docs at `/docs`.
 | `PATCH /documents/{id}/confirm` | Verify upload, queue processing |
 | `DELETE /documents/{id}` | Delete row first, storage second (204) |
 | `GET /search` | hybrid / vector / text search over own chunks |
+| `POST /documents/{id}/query` | grounded answer for one document, streamed as SSE |
+| `GET /documents/{id}/conversations` | past Q&A sessions for a document |
+| `GET /documents/{id}/conversations/{cid}/messages` | one session's messages |
 | `POST /library/query`, `GET /library/conversations` | Stubs (placeholder) |
 | `GET /health` | Liveness probe (unversioned) |

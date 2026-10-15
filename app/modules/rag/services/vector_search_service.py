@@ -1,37 +1,18 @@
 import uuid
-from typing import List, Optional, Literal
+from typing import List, Optional
 
-from pydantic import BaseModel, ConfigDict
 
 from app.modules.documents.models.document_chunk_model import DocumentChunk
 from app.modules.documents.repositories.document_chunk_repository import (
     DocumentChunkRepository,
 )
 from app.modules.documents.services.embedding_service import EmbeddingService
+from app.modules.rag.schemas.rag_schema import ChunkSearchResult, SearchMode
 
 
-class ChunkSearchResult(BaseModel):
-    chunk_id: uuid.UUID
-    document_id: uuid.UUID
-    chunk_index: int
-    page_number: Optional[int] = None
-    section_title: Optional[str] = None
-    content: str
-    token_count: int
-    score: float
-
-    model_config = ConfigDict(from_attributes=True)
-
-
-SearchMode = Literal["hybrid", "vector", "text"]
 
 
 class VectorSearchService:
-    """
-    Service for performing semantic vector, keyword full-text, or RRF hybrid search over document chunks.
-    Supports single-document queries as well as cross-library queries.
-    """
-
     def __init__(
         self,
         chunk_repository: DocumentChunkRepository,
