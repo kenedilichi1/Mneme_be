@@ -123,11 +123,16 @@ Creates a new document record and returns a presigned upload URL.
     "file_type": "application/pdf",
     "status": "pending_upload",
     "tags": [],
-    "created_at": "2026-09-16T14:00:00Z"
+    "created_at": "2026-09-16T14:00:00Z",
+    "url": "https://s3.us-west-004.backblazeb2.com/bucket/user/doc.pdf?X-Amz-..."
   },
   "upload_url": "https://api3.backblazeb2.com/b2api/v2/b2_get_upload_url?..."
 }
 ```
+
+Every document object in a response also carries `url`: a presigned GET
+link to the stored file (valid ~15 minutes). It is only usable after the
+file has been uploaded — while `status` is `pending_upload` the link 404s.
 
 **Client Upload Step:**
 ```javascript

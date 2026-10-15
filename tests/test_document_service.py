@@ -10,9 +10,13 @@ from app.core.storage.b2_storage import B2Storage, _region_from_endpoint
 from app.modules.documents.models.document_model import Document
 from app.modules.documents.schemas.document_schema import AllowedFileType, DocumentCreate
 from app.modules.documents.services.document_service import DocumentService
+from app.utils.timezone import utcnow
 
 
 def make_document(status: str = "pending_upload") -> Document:
+    # Include the flush-time defaults (tags, created_at): they are None on a
+    # freshly constructed instance, but always present on a persisted row —
+    # which is what to_public validates against.
     return Document(
         id=uuid.uuid4(),
         user_id=uuid.uuid4(),
@@ -22,6 +26,8 @@ def make_document(status: str = "pending_upload") -> Document:
         file_type="application/pdf",
         storage_key="u/book.pdf",
         status=status,
+        tags=[],
+        created_at=utcnow(),
     )
 
 
@@ -73,6 +79,33 @@ async def test_create_signs_url_for_key_and_content_type():
     storage.generate_upload_url.assert_called_once_with(
         document.storage_key, "application/pdf"
     )
+
+
+async def test_to_public_attaches_presigned_download_url():
+    service, _, storage, *_ = make_service()
+    storage.get_download_url.return_value = "https://download.example?sig=abc"
+    document = make_document(status="processed")
+
+    public = await service.to_public(document)
+
+    assert public.url == "https://download.example?sig=abc"
+    storage.get_download_url.assert_called_once_with("u/book.pdf")
+    # Row fields come through untouched
+    assert public.title == "Book"
+    assert public.status == "processed"
+    # The storage key never leaks into the API shape
+    assert "storage_key" not in public.model_dump()
+
+
+async def test_to_public_without_storage_key_has_no_url():
+    service, _, storage, *_ = make_service()
+    document = make_document()
+    document.storage_key = None
+
+    public = await service.to_public(document)
+
+    assert public.url is None
+    storage.get_download_url.assert_not_called()
 
 
 async def test_confirm_rejects_missing_file():

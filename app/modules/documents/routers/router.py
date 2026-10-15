@@ -38,7 +38,7 @@ async def create_document(
     )
     return ok(
         {
-            "document": document,
+            "document": await document_service.to_public(document),
             "upload_url": upload_url,
             "upload_headers": {"Content-Type": document.file_type},
         },
@@ -60,7 +60,8 @@ async def list_documents(
     documents = await document_service.list_documents(
         user_id=current_user.id, limit=limit, offset=offset
     )
-    return ok(documents, "Documents retrieved")
+    public = [await document_service.to_public(d) for d in documents]
+    return ok(public, "Documents retrieved")
 
 
 @documents_router.get(
@@ -80,7 +81,7 @@ async def get_document(
     document = await document_service.get_document(
         document_id=document_id, user_id=current_user.id
     )
-    return ok(document, "Document retrieved")
+    return ok(await document_service.to_public(document), "Document retrieved")
 
 
 @documents_router.patch(
@@ -103,7 +104,7 @@ async def confirm_upload(
     document = await document_service.confirm_upload(
         document_id=document_id, user_id=current_user.id
     )
-    return ok(document, "Upload confirmed")
+    return ok(await document_service.to_public(document), "Upload confirmed")
 
 
 @documents_router.delete(
