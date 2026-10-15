@@ -49,6 +49,47 @@ startxref
 """
 
 
+def build_sample_pdf(page_texts: list[str]) -> bytes:
+    """A minimal N-page PDF: one Helvetica line per page."""
+    page_ids = [4 + 2 * i for i in range(len(page_texts))]
+    kids = " ".join(f"{page_id} 0 R" for page_id in page_ids)
+
+    objects: list[bytes] = [
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        f"<< /Type /Pages /Kids [{kids}] /Count {len(page_texts)} >>".encode(),
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    ]
+    for page_id, text in zip(page_ids, page_texts):
+        content = b"BT /F1 12 Tf 72 700 Td (" + text.encode("latin-1") + b") Tj ET"
+        objects.append(
+            (
+                f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
+                f"/Resources << /Font << /F1 3 0 R >> >> /Contents {page_id + 1} 0 R >>"
+            ).encode()
+        )
+        objects.append(
+            b"<< /Length " + str(len(content)).encode() + b" >>\nstream\n"
+            + content
+            + b"\nendstream"
+        )
+
+    out = bytearray(b"%PDF-1.4\n")
+    offsets = []
+    for number, obj in enumerate(objects, start=1):
+        offsets.append(len(out))
+        out += f"{number} 0 obj\n".encode() + obj + b"\nendobj\n"
+    startxref = len(out)
+    out += f"xref\n0 {len(objects) + 1}\n".encode()
+    out += b"0000000000 65535 f \n"
+    for offset in offsets:
+        out += f"{offset:010d} 00000 n \n".encode()
+    out += (
+        f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\n"
+        f"startxref\n{startxref}\n%%EOF\n"
+    ).encode()
+    return bytes(out)
+
+
 def create_sample_epub(file_path: Path) -> None:
     with zipfile.ZipFile(file_path, "w") as zf:
         zf.writestr("mimetype", "application/epub+zip")
@@ -219,3 +260,47 @@ def test_epub_chunks_respect_tiny_token_budget():
     finally:
         if epub_path.exists():
             epub_path.unlink()
+
+
+THREE_PAGE_TEXTS = [
+    "Chapter one alpha content for page one of the sample.",
+    "Chapter two beta content for page two of the sample.",
+    "Chapter three gamma content for page three of the sample.",
+]
+
+
+def test_convert_in_batches_keeps_global_page_numbers(tmp_path):
+    from docling.datamodel.base_models import InputFormat
+
+    pdf_path = tmp_path / "three_pages.pdf"
+    pdf_path.write_bytes(build_sample_pdf(THREE_PAGE_TEXTS))
+    parser = DoclingParserService(page_batch_size=1)
+
+    documents = parser._convert_in_batches(pdf_path, InputFormat.PDF)
+
+    assert len(documents) == 3
+    for expected_page, doc in enumerate(documents, start=1):
+        page_numbers = [
+            parser._extract_page_number(chunk)
+            for chunk in parser._chunker.chunk(doc)
+        ]
+        assert page_numbers, f"page {expected_page} produced no chunks"
+        # page_range keeps global numbers; a batch must never restart at 1
+        assert any(p == expected_page for p in page_numbers), page_numbers
+        assert all(p in (expected_page, None) for p in page_numbers), page_numbers
+
+
+def test_parse_pdf_across_page_batches(tmp_path):
+    pdf_path = tmp_path / "three_pages.pdf"
+    pdf_path.write_bytes(build_sample_pdf(THREE_PAGE_TEXTS))
+    parser = DoclingParserService(page_batch_size=1)
+
+    parsed = parser.parse_document(pdf_path, mime_type="application/pdf")
+
+    assert parsed.page_count == 3
+    assert parsed.file_type == "application/pdf"
+    for text in ("alpha content", "beta content", "gamma content"):
+        assert text in parsed.text_content
+    # Gapless index across the chunks produced by every batch
+    assert [c.chunk_index for c in parsed.chunks] == list(range(len(parsed.chunks)))
+    assert all(1 <= c.page_number <= 3 for c in parsed.chunks if c.page_number)

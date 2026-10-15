@@ -12,6 +12,11 @@ services:
       - .env
     volumes:
       - hf-cache:/app/.cache/huggingface
+    # Same resolver flakiness as the worker: it also reaches CloudAMQP for the
+    # broker (events) and the management API.
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
     depends_on:
       db:
         condition: service_healthy
@@ -34,6 +39,12 @@ services:
       - .env
     volumes:
       - hf-cache:/app/.cache/huggingface
+    # Docker Desktop's resolver intermittently fails against the CloudAMQP
+    # broker host ("No address associated with hostname"); public fallbacks
+    # keep the connection loop from crashing the worker.
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
     restart: unless-stopped
     depends_on:
       db:

@@ -29,7 +29,11 @@ from app.core.queue.queue import (
 )
 from app.core.storage.storage_service import storage_service
 from app.modules.documents.models.document_chunk_model import DocumentChunk
-from app.modules.documents.models.document_status import DocumentStatus, transition
+from app.modules.documents.models.document_status import (
+    DocumentStatus,
+    InvalidStatusTransition,
+    transition,
+)
 from app.modules.documents.repositories.document_chunk_repository import (
     DocumentChunkRepository,
 )
@@ -210,7 +214,13 @@ async def process_document(event: DocumentEvent) -> None:
 
 
 async def set_document_status(event: DocumentEvent, status: str) -> None:
-    """Update status in a fresh session, independent of any failed processing session."""
+    """Update status in a fresh session, independent of any failed processing session.
+
+    The caller acks as soon as this returns, so an illegal transition must not
+    escape: the message would be requeued, redelivered, and fail the same way
+    forever, dead-lettering a copy on every pass (this loop is what filled the
+    DLQ). Statuses here are recorded after the fact; skipping one is harmless.
+    """
     async with AsyncSessionLocal() as session:
         doc_repo = DocumentRepository(session)
         document = await doc_repo.get_by_id(
@@ -218,7 +228,22 @@ async def set_document_status(event: DocumentEvent, status: str) -> None:
         )
         if document is None:
             return
-        transition(document, status)
+        if document.status == DocumentStatus.PROCESSED.value:
+            # This document finished while the message was still in flight
+            # (a stale redelivery). The success stands: never regress it to
+            # "uploaded" (which would requeue a full re-parse) nor record a
+            # "failed" outcome against it.
+            logger.info(
+                "Document %s already processed; leaving status as-is", document.id
+            )
+            return
+        try:
+            transition(document, status)
+        except InvalidStatusTransition as exc:
+            logger.warning(
+                "Not moving document %s to %r: %s", document.id, status, exc
+            )
+            return
         await doc_repo.update(document)
         await session.commit()
 

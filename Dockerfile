@@ -17,7 +17,10 @@ RUN adduser \
     --uid "${UID}" \
     appuser
 
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+# uv comes from PyPI, not the ghcr.io image: ghcr.io is unreachable from some
+# networks and the build dies on `COPY --from=ghcr.io/...` metadata resolution.
+ARG UV_VERSION=0.11.32
+RUN pip install --no-cache-dir "uv==${UV_VERSION}"
 
 RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=uv.lock,target=uv.lock \
@@ -26,6 +29,16 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     && chown -R appuser:appuser /app/.venv
 
 ENV UV_CACHE_DIR=/tmp/.uv-cache
+
+# Native libs for opencv-python (docling -> rapidocr / tableformer).
+# python-slim ships without them, so `import cv2` dies with
+# ImportError: libxcb.so.1 and every PDF parse fails.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        libgl1 \
+        libglib2.0-0 \
+        libxcb1 \
+    && rm -rf /var/lib/apt/lists/*
 
 # Hugging Face model cache (embedding + Docling models); mounted as a volume in compose
 ENV HF_HOME=/app/.cache/huggingface
